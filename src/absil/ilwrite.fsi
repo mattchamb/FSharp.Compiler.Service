@@ -32,5 +32,10 @@ val WriteILBinary:
     noDebugData: bool ->
     unit
 
-
+val MemoryEmitILBinary: 
+    filename: string ->
+    options:  options ->
+    input:    ILModuleDef -> 
+    noDebugData: bool ->
+    byte array
 

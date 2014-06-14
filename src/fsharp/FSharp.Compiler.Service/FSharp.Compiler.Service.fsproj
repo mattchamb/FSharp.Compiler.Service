@@ -503,9 +503,6 @@
     <Compile Include="..\fscopts.fs">
       <Link>Driver/fscopts.fs</Link>
     </Compile>
-    <Compile Include="..\fsc.fsi">
-      <Link>Driver/fsc.fsi</Link>
-    </Compile>
     <Compile Include="..\fsc.fs">
       <Link>Driver/fsc.fs</Link>
     </Compile>

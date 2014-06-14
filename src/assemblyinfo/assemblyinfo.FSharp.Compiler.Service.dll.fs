@@ -20,6 +20,7 @@ open System.Reflection
 [<assembly:System.Runtime.CompilerServices.InternalsVisibleTo("FSharp.ProjectSystem.PropertyPages")>]
 [<assembly:System.Runtime.CompilerServices.InternalsVisibleTo("FSharp.Compiler.Interactive.Settings")>]
 [<assembly:System.Runtime.CompilerServices.InternalsVisibleTo("FSharp.Compiler.Server.Shared")>]
+[<assembly:System.Runtime.CompilerServices.InternalsVisibleTo("CompilerThingy")>]
 
 // Note: internals visible to unit test DLLs in Retail (and all) builds.
 [<assembly:System.Runtime.CompilerServices.InternalsVisibleTo("Test")>]

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2013
-VisualStudioVersion = 12.0.21005.1
+VisualStudioVersion = 12.0.30324.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "project", "project", "{B6B68AE6-E7A4-4D43-9B34-FFA74BFE192B}"
 	ProjectSection(SolutionItems) = preProject
@@ -49,6 +49,10 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "FSharp.Compiler.Service.Tes
 	ProjectSection(ProjectDependencies) = postProject
 		{2E4D67B4-522D-4CF7-97E4-BA940F0B18F3} = {2E4D67B4-522D-4CF7-97E4-BA940F0B18F3}
 	EndProjectSection
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "CompilerThingy", "CompilerThingy\CompilerThingy.fsproj", "{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CallTheCompilerThingy", "CallTheCompilerThingy\CallTheCompilerThingy.csproj", "{E179C38C-C88A-414B-A047-422A862848F4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -168,6 +172,36 @@ Global
 		{5EF9FF95-1C75-458A-983A-168E43945913}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
 		{5EF9FF95-1C75-458A-983A-168E43945913}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{5EF9FF95-1C75-458A-983A-168E43945913}.Release|x86.ActiveCfg = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Proto|Any CPU.ActiveCfg = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Proto|Any CPU.Build.0 = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Proto|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Proto|Mixed Platforms.Build.0 = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Proto|x86.ActiveCfg = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{E8DB22C0-4C9D-451C-8C70-60D9AAD0C6E0}.Release|x86.ActiveCfg = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Debug|Mixed Platforms.ActiveCfg = Debug|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Debug|Mixed Platforms.Build.0 = Debug|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Proto|Any CPU.ActiveCfg = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Proto|Any CPU.Build.0 = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Proto|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Proto|Mixed Platforms.Build.0 = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Proto|x86.ActiveCfg = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{E179C38C-C88A-414B-A047-422A862848F4}.Release|x86.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

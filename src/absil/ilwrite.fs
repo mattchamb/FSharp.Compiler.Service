@@ -3909,7 +3909,7 @@ let writeDirectory os dict =
 
 let writeBytes (os: BinaryWriter) (chunk:byte[]) = os.Write(chunk,0,chunk.Length)  
 
-let writeBinaryAndReportMappings (outfile, ilg, pdbfile: string option, signer: ILStrongNameSigner option, fixupOverlappingSequencePoints, emitTailcalls, showTimes, dumpDebugInfo) modul noDebugData =
+let writeBinaryAndReportMappings (os, ilg, pdbfile: string option, signer: ILStrongNameSigner option, fixupOverlappingSequencePoints, emitTailcalls, showTimes, dumpDebugInfo) modul noDebugData outfile =
     // Store the public key from the signer into the manifest.  This means it will be written 
     // to the binary and also acts as an indicator to leave space for delay sign 
 
@@ -3950,11 +3950,7 @@ let writeBinaryAndReportMappings (outfile, ilg, pdbfile: string option, signer: 
 
     let timestamp = absilWriteGetTimeStamp ()
 
-    let os = 
-        try  
-            new BinaryWriter(FileSystem.FileStreamCreateShim(outfile))
-        with e -> 
-            failwith ("Could not open file for writing (binary mode): " + outfile)    
+    
 
     let  pdbData,debugDirectoryChunk,debugDataChunk,textV2P,mappings =
         try 
@@ -4500,12 +4496,7 @@ let writeBinaryAndReportMappings (outfile, ilg, pdbfile: string option, signer: 
                  b0 reloc2; b1 reloc2; |];
           writePadding os "end of .reloc" (imageEndSectionPhysLoc - relocSectionPhysLoc - relocSectionSize);
 
-          os.Close();
           
-          try 
-              FileSystemUtilites.setExecutablePermission outfile
-          with _ -> 
-              ()
           pdbData,debugDirectoryChunk,debugDataChunk,textV2P,mappings
           
         // Looks like a finally...
@@ -4603,9 +4594,30 @@ type options =
 
 
 let WriteILBinary outfile (args: options) modul noDebugData =
-    ignore (writeBinaryAndReportMappings (outfile, args.ilg, args.pdbfile, args.signer, args.fixupOverlappingSequencePoints, args.emitTailcalls, args.showTimes, args.dumpDebugInfo) modul noDebugData)
+    let fileStream = 
+        try  
+            new BinaryWriter(FileSystem.FileStreamCreateShim(outfile))
+        with e -> 
+            failwith ("Could not open file for writing (binary mode): " + outfile)
+    try
+        let result = writeBinaryAndReportMappings (fileStream, args.ilg, args.pdbfile, args.signer, args.fixupOverlappingSequencePoints, args.emitTailcalls, args.showTimes, args.dumpDebugInfo) modul noDebugData outfile
+        try 
+            FileSystemUtilites.setExecutablePermission outfile
+        with _ -> 
+            ()
+        ignore result
+    with _ ->
+        fileStream.Close()
+        reraise()
 
+    fileStream.Close();
 
+let MemoryEmitILBinary outfile (args: options) modul noDebugData =
+    use memStream = new MemoryStream()
+    use memWriter = new BinaryWriter(memStream)
+    ignore (writeBinaryAndReportMappings (memWriter, args.ilg, args.pdbfile, args.signer, args.fixupOverlappingSequencePoints, args.emitTailcalls, args.showTimes, args.dumpDebugInfo) modul noDebugData outfile)
+    memWriter.Flush()
+    memStream.ToArray()
 
 (******************************************************
 ** Notes on supporting the Itanium         **

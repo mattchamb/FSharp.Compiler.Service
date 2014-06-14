@@ -326,7 +326,25 @@ let ProcessCommandLineFlags (tcConfigB: TcConfigBuilder, argv) =
 
     dllFiles |> List.iter (fun f->tcConfigB.AddReferencedAssemblyByPath(rangeStartup,f))
     sourceFiles
-          
+
+let parseSourceFiles sourceFiles (tcConfig : TcConfig) lexResourceManager errorLogger (exiter : Exiter) =
+    try  
+        sourceFiles 
+        |> tcConfig.ComputeCanContainEntryPoint 
+        |> List.zip sourceFiles
+        // PERF: consider making this parallel, once uses of global state relevant to parsing are cleaned up 
+        |> List.choose (fun (filename:string,isLastCompiland:bool) -> 
+            let pathOfMetaCommandSource = Path.GetDirectoryName(filename)
+            match ParseOneInputFile(tcConfig,lexResourceManager,["COMPILED"],filename,isLastCompiland,errorLogger,(*retryLocked*)false) with
+            | Some(input)->Some(input,pathOfMetaCommandSource)
+            | None -> None
+            ) 
+    with e -> 
+        errorRecoveryNoRange e
+#if SQM_SUPPORT
+        SqmLoggerWithConfig tcConfig errorLogger.ErrorOrWarningNumbers
+#endif
+        exiter.Exit 1          
 
 // The project system needs to be able to somehow crack open assemblies to look for type providers in order to pop up the security dialog when necessary when a user does 'Build'.
 // Rather than have the PS re-code that logic, it re-uses the existing code in the very front end of the compiler that parses the command-line and imports the referenced assemblies.
@@ -447,24 +465,8 @@ let getTcImportsFromCommandLine(displayPSTypeProviderSecurityDialogBlockingUI : 
     // step - parse sourceFiles 
     ReportTime tcConfig "Parse inputs"
     use unwindParsePhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.Parse)            
-    let inputs =
-        try  
-            sourceFiles 
-            |> tcConfig.ComputeCanContainEntryPoint 
-            |> List.zip sourceFiles
-            // PERF: consider making this parallel, once uses of global state relevant to parsing are cleaned up 
-            |> List.choose (fun (filename:string,isLastCompiland:bool) -> 
-                let pathOfMetaCommandSource = Path.GetDirectoryName(filename)
-                match ParseOneInputFile(tcConfig,lexResourceManager,["COMPILED"],filename,isLastCompiland,errorLogger,(*retryLocked*)false) with
-                | Some(input)->Some(input,pathOfMetaCommandSource)
-                | None -> None
-                ) 
-        with e -> 
-            errorRecoveryNoRange e
-#if SQM_SUPPORT
-            SqmLoggerWithConfig tcConfig errorLogger.ErrorOrWarningNumbers
-#endif
-            exiter.Exit 1
+    
+    let inputs = parseSourceFiles sourceFiles tcConfig lexResourceManager errorLogger exiter
 
     if tcConfig.parseOnly then exiter.Exit 0 
     if not tcConfig.continueAfterParseFailure then 
@@ -1750,6 +1752,31 @@ let GetSigner(signingInfo) =
                     // Note:: don't use errorR here since we really want to fail and not produce a binary
                     error(Error(FSComp.SR.fscKeyFileCouldNotBeOpened(s),rangeCmdArgs))
 
+module InMemoryEmitter =
+    let EmitIL (tcConfig:TcConfig,ilGlobals,_errorLogger:ErrorLogger,outfile,ilxMainModule,exiter:Exiter) =
+        try
+            try 
+                ILBinaryWriter.MemoryEmitILBinary 
+                  outfile
+                  {    ilg = ilGlobals
+                       pdbfile = None;
+                       emitTailcalls = tcConfig.emitTailcalls;
+                       showTimes = tcConfig.showTimes;
+                       signer = None;
+                       fixupOverlappingSequencePoints = false; 
+                       dumpDebugInfo = tcConfig.dumpDebugInfo } 
+                  ilxMainModule
+                  tcConfig.noDebugData
+            with Failure msg -> 
+                error(Error(FSComp.SR.fscProblemWritingBinary(outfile,msg), rangeCmdArgs))
+        with e -> 
+            errorRecoveryNoRange e
+#if SQM_SUPPORT
+            SqmLoggerWithConfig tcConfig _errorLogger.ErrorNumbers _errorLogger.WarningNumbers
+#endif             
+            exiter.Exit 1 
+
+
 module FileWriter = 
     let EmitIL (tcConfig:TcConfig,ilGlobals,_errorLogger:ErrorLogger,outfile,pdbfile,ilxMainModule,signingInfo:SigningInfo,exiter:Exiter) =
         try
@@ -2019,6 +2046,76 @@ let main1OfAst (openBinariesInMemory, assemblyName, target, outfile, pdbFile, dl
     // data structures involved here are so large we can't take the risk.
     Args(tcConfig,tcImports,frameworkTcImports,tcGlobals,errorLogger,generatedCcu,outfile,typedAssembly,topAttrs,pdbFile,assemblyName,assemVerFromAttrib,signingInfo,exiter)
 
+// set up typecheck for given inputs without parsing any command line parameters
+let main1OfMemoryCompile (openBinariesInMemory, assemblyName, target, outfile, pdbFile, dllReferences, exiter, errorLoggerProvider: ErrorLoggerProvider, inputFiles) =
+
+    let tcConfigB = Build.TcConfigBuilder.CreateNew(defaultFSharpBinariesDir, (*optimizeForMemory*) false, Directory.GetCurrentDirectory(), isInteractive=false, isInvalidationSupported=false)
+    tcConfigB.openBinariesInMemory <- openBinariesInMemory
+    // Preset: --optimize+ -g --tailcalls+ (see 4505)
+    SetOptimizeSwitch tcConfigB On
+    SetDebugSwitch    tcConfigB None Off
+    SetTailcallSwitch tcConfigB On
+    tcConfigB.target <- target
+    tcConfigB.sqmNumOfSourceFiles <- 1
+        
+    let errorLogger = errorLoggerProvider.CreateErrorLoggerThatQuitsAfterMaxErrors (tcConfigB, exiter)
+
+    tcConfigB.conditionalCompilationDefines <- "COMPILED" :: tcConfigB.conditionalCompilationDefines
+
+    // append assembly dependencies
+    dllReferences |> List.iter (fun ref -> tcConfigB.AddReferencedAssemblyByPath(rangeStartup,ref))
+
+    // If there's a problem building TcConfig, abort    
+    let tcConfig = 
+        try
+            TcConfig.Create(tcConfigB,validate=false)
+        with e ->
+            exiter.Exit 1
+    
+    let foundationalTcConfigP = TcConfigProvider.Constant(tcConfig)
+    let sysRes,otherRes,knownUnresolved = TcAssemblyResolutions.SplitNonFoundationalResolutions(tcConfig)
+    let tcGlobals,frameworkTcImports = TcImports.BuildFrameworkTcImports (foundationalTcConfigP, sysRes, otherRes)
+
+    use unwindParsePhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.Parse) 
+
+    let lexResourceManager = new Lexhelp.LexResourceManager()
+    let inputs = 
+        parseSourceFiles inputFiles tcConfig lexResourceManager errorLogger exiter
+        |> List.map fst
+
+    let meta = Directory.GetCurrentDirectory()
+    let tcConfig = (tcConfig,inputs) ||> List.fold (fun tcc inp -> ApplyMetaCommandsFromInputToTcConfig tcc (inp,meta))
+    let tcConfigP = TcConfigProvider.Constant(tcConfig)
+
+    let tcGlobals,tcImports =  
+        let tcImports = TcImports.BuildNonFrameworkTcImports(None,tcConfigP,tcGlobals,frameworkTcImports,otherRes,knownUnresolved)
+        tcGlobals,tcImports
+
+    use unwindParsePhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.TypeCheck)            
+    let tcEnv0 = GetInitialTypecheckerEnv (Some assemblyName) rangeStartup tcConfig tcImports tcGlobals
+
+    let tcState,topAttrs,typedAssembly,_tcEnvAtEnd = 
+        TypeCheck(tcConfig,tcImports,tcGlobals,errorLogger,assemblyName,NiceNameGenerator(),tcEnv0,inputs,exiter)
+
+    let generatedCcu = tcState.Ccu
+
+    use unwindPhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.CodeGen)
+    let signingInfo = ValidateKeySigningAttributes tcConfig tcGlobals topAttrs
+
+    // Try to find an AssemblyVersion attribute 
+    let assemVerFromAttrib = 
+        match AttributeHelpers.TryFindVersionAttribute tcGlobals "System.Reflection.AssemblyVersionAttribute" topAttrs.assemblyAttrs with
+        | Some v -> 
+            match tcConfig.version with 
+            | VersionNone -> Some v
+            | _ -> warning(Error(FSComp.SR.fscAssemblyVersionAttributeIgnored(),Range.range0)); None
+        | _ -> None
+
+    // Pass on only the minimimum information required for the next phase to ensure GC kicks in.
+    // In principle the JIT should be able to do good liveness analysis to clean things up, but the
+    // data structures involved here are so large we can't take the risk.
+    Args(tcConfig,tcImports,frameworkTcImports,tcGlobals,errorLogger,generatedCcu,outfile,typedAssembly,topAttrs,pdbFile,assemblyName,assemVerFromAttrib,signingInfo,exiter)
+
   
 let main2(Args(tcConfig,tcImports,frameworkTcImports : TcImports,tcGlobals,errorLogger,generatedCcu:CcuThunk,outfile,typedAssembly,topAttrs,pdbfile,assemblyName,assemVerFromAttrib,signingInfo,exiter:Exiter)) = 
       
@@ -2158,6 +2255,15 @@ let main3(Args(tcConfig,errorLogger:ErrorLogger,staticLinker,ilGlobals,ilxMainMo
         
     Args (tcConfig,errorLogger,ilGlobals,ilxMainModule,outfile,pdbfile,signingInfo,exiter)
 
+let main4OfMemoryEmit (Args(tcConfig,errorLogger:ErrorLogger,ilGlobals,ilxMainModule,outfile,pdbfile,signingInfo,exiter)) = 
+    ReportTime tcConfig "Write .NET Binary"
+    use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.Output)    
+
+    let emittedAssembly = InMemoryEmitter.EmitIL (tcConfig,ilGlobals,errorLogger,outfile,ilxMainModule,exiter)
+    abortOnError(errorLogger,tcConfig,exiter)
+    ReportTime tcConfig "Exiting"
+    emittedAssembly
+
 let main4 dynamicAssemblyCreator (Args(tcConfig,errorLogger:ErrorLogger,ilGlobals,ilxMainModule,outfile,pdbfile,signingInfo,exiter)) = 
     ReportTime tcConfig "Write .NET Binary"
     use unwindBuildPhase = PushThreadBuildPhaseUntilUnwind (BuildPhase.Output)    
@@ -2205,6 +2311,14 @@ let compileOfAst (openBinariesInMemory, assemblyName, target, outFile, pdbFile, 
     |> main2c
     |> main3
     |> main4 dynamicAssemblyCreator
+
+let memoryCompileOfAst (assemblyName, target, outFile, dllReferences, exiter, errorLoggerProvider, inputs) = 
+    main1OfMemoryCompile (true, assemblyName, target, outFile, None, dllReferences, exiter, errorLoggerProvider, inputs)
+    |> main2
+    |> main2b (None, None)
+    |> main2c
+    |> main3
+    |> main4OfMemoryEmit
 
 let mainCompile (argv, bannerAlreadyPrinted, openBinariesInMemory, exiter:Exiter, errorLoggerProvider, tcImportsCapture, dynamicAssemblyCreator) = 
     typecheckAndCompile(argv, bannerAlreadyPrinted, openBinariesInMemory, exiter, errorLoggerProvider, tcImportsCapture, dynamicAssemblyCreator)
